@@ -1,14 +1,10 @@
 # TrigFuzz
 
-Official code repository for the research paper *TrigFuzz: Triggering Conditions Guided Directed Fuzzing* (IEEE S&P 2026). We will release the code soon.
+Official code repository for the research paper [*TrigFuzz: Triggering Conditions Guided Directed Fuzzing*](https://vul337.github.io/TrigFuzz/trigfuzz.pdf) (IEEE S&P 2026). We will release the code soon.
 
-## Paper
-
-[PDF](https://vul337.github.io/TrigFuzz/trigfuzz.pdf)
-
-<p>
+<p align="center">
   <a href="https://vul337.github.io/TrigFuzz/trigfuzz.pdf">
-    <img src="docs/trigfuzz-page1.png" alt="First page of the TrigFuzz paper" width="700">
+    <img src="docs/trigfuzz-page1.png" alt="First page of the TrigFuzz paper" width="400">
   </a>
 </p>
 
