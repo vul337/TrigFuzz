@@ -12,4 +12,7 @@ Vulnerabilities discovered by TrigFuzz.
 |            |                          |              |                                                              |
 | gpac       | Heap Buffer Overflow     | Nov 26, 2025 | [Patched](https://github.com/gpac/gpac/issues/3398)          |
 |            | Double Free              | Nov 28, 2025 | [Patched](https://github.com/gpac/gpac/issues/3403)          |
+|            |                          |              |                                                              |
+| libxml2    | NULL Pointer Dereference | May 04, 2026 | [Patched](https://gitlab.gnome.org/GNOME/libxml2/-/work_items/1107) |
+
 
