@@ -1,12 +1,10 @@
 # TrigFuzz
 
-Official code repository for the research paper [*TrigFuzz: Triggering Conditions Guided Directed Fuzzing*](https://vul337.github.io/TrigFuzz/trigfuzz.pdf) (IEEE S&P 2026). We will release the code soon.
+<a href="https://vul337.github.io/TrigFuzz/trigfuzz.pdf"><img src="docs/trigfuzz-page1.png" align="right" width="250" alt="First page of the TrigFuzz paper"></a>
 
-<p align="center">
-  <a href="https://vul337.github.io/TrigFuzz/trigfuzz.pdf">
-    <img src="docs/trigfuzz-page1.png" alt="First page of the TrigFuzz paper" width="400">
-  </a>
-</p>
+Official code repository for the research paper [*TrigFuzz: Triggering Conditions Guided Directed Fuzzing*](https://vul337.github.io/TrigFuzz/trigfuzz.pdf) (IEEE S&P 2026). TrigFuzz is a directed fuzzing tool that leverages LLMs to extract vulnerability triggering conditions for PoC generation.
+
+We will release the code soon.
 
 ## Citation
 
