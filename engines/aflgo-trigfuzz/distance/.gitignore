@@ -1,0 +1,8 @@
+distance_calculator/distance.bin
+distance_calculator/CMakeCache.txt
+distance_calculator/CMakeLists.txt*
+!distance_calculator/CMakeLists.txt
+distance_calculator/CMakeFiles
+distance_calculator/Makefile
+distance_calculator/cmake_install.cmake
+distance_calculator/CMakeScripts

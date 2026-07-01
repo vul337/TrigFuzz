@@ -1,0 +1,5 @@
+{
+  "type": "abort-on-two-byte-magic",
+  "crash_points": ["line 12 in main.c"],
+  "description": "The target aborts only when byte 0 is 'Z' and byte 1 is '!'."
+}

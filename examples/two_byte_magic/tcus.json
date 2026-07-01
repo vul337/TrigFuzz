@@ -1,0 +1,20 @@
+[
+  {
+    "cond": "b0 == 90",
+    "distance_expr": "tf_eq((double)b0, 90.0)",
+    "loc": "line 12 in main.c",
+    "seq": 0,
+    "conj": 0,
+    "w": 1.0,
+    "kind": "numeric"
+  },
+  {
+    "cond": "b1 == 33",
+    "distance_expr": "tf_eq((double)b1, 33.0)",
+    "loc": "line 12 in main.c",
+    "seq": 0,
+    "conj": 0,
+    "w": 1.0,
+    "kind": "numeric"
+  }
+]

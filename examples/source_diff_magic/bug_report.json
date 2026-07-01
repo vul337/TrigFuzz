@@ -1,0 +1,5 @@
+{
+  "type": "abort-on-byte-magic",
+  "crash_points": ["line 9 in main.c"],
+  "description": "The target aborts only when the first byte is 'Y' (89) and the fixed suffix is MAG."
+}

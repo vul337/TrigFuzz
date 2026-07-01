@@ -1,0 +1,11 @@
+[
+  {
+    "cond": "v < 2",
+    "distance_expr": "tf_lt((double)v, 2.0)",
+    "loc": "line 23 in main.c",
+    "seq": 0,
+    "conj": 0,
+    "w": 1.0,
+    "kind": "numeric"
+  }
+]

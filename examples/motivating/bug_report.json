@@ -1,0 +1,5 @@
+{
+  "type": "use-of-uninitialized-variable",
+  "crash_points": ["line 25 in main.c"],
+  "description": "sscanf partially populates a,b,c,d; use(b) is UB when v<2."
+}

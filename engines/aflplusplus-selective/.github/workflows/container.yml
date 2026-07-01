@@ -1,0 +1,79 @@
+name: Container
+on:
+  push:
+    branches:
+      - stable
+      - dev
+    tags:
+      - "*"
+  pull_request:
+    branches:
+      - stable # No need for stable-pull-request, as that equals dev-push
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    strategy:
+      matrix:
+        runner-type: [ubuntu-24.04, ubuntu-24.04-arm]
+    name: Test image
+    runs-on: ${{ matrix.runner-type }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build amd64
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          tags: aflplusplus:test
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            TEST_BUILD=1
+      - name: Test
+        run: >
+          docker run --rm aflplusplus:test bash -c "
+          apt-get update && 
+          apt-get install -y libcmocka-dev && 
+          make -i tests
+          "
+  push:
+    name: Push multi-arch image
+    runs-on: ubuntu-latest
+    needs:
+      - build-and-test
+    if: ${{ github.event_name == 'push' && github.repository == 'AFLplusplus/AFLplusplus' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to docker.io
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+      - name: Set tags to push
+        id: push-tags
+        run: |
+          PUSH_TAGS=docker.io/aflplusplus/aflplusplus:${GITHUB_REF_NAME}
+          if [ "${GITHUB_REF_NAME}" = "stable" ]; then
+            PUSH_TAGS=${PUSH_TAGS},docker.io/aflplusplus/aflplusplus:latest
+          fi
+          export PUSH_TAGS
+          echo "::set-output name=PUSH_TAGS::${PUSH_TAGS}"
+      - name: Push to docker.io registry
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.push-tags.outputs.PUSH_TAGS }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

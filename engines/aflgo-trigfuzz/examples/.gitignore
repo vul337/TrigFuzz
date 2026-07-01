@@ -1,0 +1,6 @@
+# Everything in this folder
+*
+*/
+# but this file and those scripts
+!.gitignore
+!*.sh
