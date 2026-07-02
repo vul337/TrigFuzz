@@ -39,6 +39,47 @@ This release contains two usable paths:
 
 The shared Python tooling lives in `trigfuzz/`. The target-side AFLGo runtime header is `distance.h`; the AFL++ runtime header is `engines/aflplusplus-selective/include/trigfuzz-distance.h`.
 
+## Environment
+
+The release workflow was tested on Ubuntu 22.04.5 LTS with:
+
+- Python 3.10;
+- GCC 11;
+- LLVM/Clang 14;
+- GNU make;
+- CMake;
+- the OpenAI Python SDK for TC generation;
+- `pytest` for the Python test suite.
+
+Install the Python dependencies:
+
+```sh
+python3 -m pip install openai pytest
+```
+
+Build dependencies vary by engine:
+
+- AFLGo based TrigFuzz uses the bundled AFLGo/AFL source tree and builds with `make clean all`.
+- Selective AFL++ based TrigFuzz uses the bundled AFL++ source tree and builds with `make source-only`.
+- AFL++ gcc-plugin mode needs GCC plugin development headers.
+- AFL++ Nyx mode is optional and requires Rust; the normal source-instrumentation build does not require Nyx.
+
+Runtime environment variables used by the workflow:
+
+| variable | purpose |
+|---|---|
+| `OPENAI_API_KEY` | API key for TC generation. |
+| `OPENAI_MODEL` | Optional model override for TC generation. |
+| `OPENAI_API_BASE_URL` / `OPENAI_BASE_URL` | Optional OpenAI-compatible API base URL. |
+| `TRIGFUZZ_AFL` | Optional override for the AFLGo based `afl-fuzz` binary. |
+| `TRIGFUZZ_AFL_GCC` | Optional override for the AFLGo based `afl-gcc` compiler wrapper. |
+| `AFL_TRIG_ENABLE_BYTE_AWARE_MUTATION` | Opt-in switch for the triggering byte-aware mutation stage. |
+| `AFL_TRIG_MUTATION_MODE` | Optional byte-aware mutation strategy: `diff`, `scan`, or `hybrid`. |
+| `AFL_TRIGFUZZ_ENABLE` | Enables TrigFuzz feedback in the AFL++ based engine. |
+| `AFL_TRIGFUZZ_INS_NUM` | Number of TCU distance slots for the AFL++ based engine. |
+| `AFL_TRIGFUZZ_SEQ_NUM` | Number of TCU sequence groups for the AFL++ based engine. |
+| `AFL_TRIGFUZZ_SELECTIVE_FILE` | Selective instrumentation keep-list path for the AFL++ based engine. |
+
 ## Complete Workflow
 
 ### 1. Prepare a target directory
