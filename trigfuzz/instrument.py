@@ -66,10 +66,28 @@ def instrument_v1(tcus: list[TCU], source_root: pathlib.Path) -> None:
         # prepend, so iterate in reverse.
         for lineno in sorted(line_map, reverse=True):
             calls = [_v1_call(t) for t in line_map[lineno]]
-            # Preserve indentation of the target line for readability.
-            indent = _indent(lines[lineno - 1])
+            target_line = lines[lineno - 1]
+            # If the target line is an else/else-if clause, inserting before
+            # it would break the if-else chain ("else without a previous if").
+            # Instead, insert the instrument call inside the block body.
+            if target_line.lstrip().startswith("else"):
+                # Find the opening brace on this line or the next, then
+                # insert right after it.
+                insert_pos = lineno  # default: insert on the line after else
+                brace_line = target_line
+                search_offset = 0
+                while "{" not in brace_line:
+                    search_offset += 1
+                    if lineno - 1 + search_offset >= len(lines):
+                        break
+                    brace_line = lines[lineno - 1 + search_offset]
+                insert_pos = lineno + search_offset
+                indent = _indent(target_line) + "    "
+            else:
+                insert_pos = lineno - 1
+                indent = _indent(target_line)
             stitched = "".join(indent + c + "\n" for c in calls)
-            lines.insert(lineno - 1, stitched)
+            lines.insert(insert_pos, stitched)
 
         # Inject the #include once at the top if missing.
         if '#include "distance.h"' not in "".join(lines[:20]):
