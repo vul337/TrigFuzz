@@ -119,6 +119,11 @@ static void edit_params(u32 argc, char** argv) {
 
   cc_params[cc_par_cnt++] = "-Qunused-arguments";
 
+  /* This wrapper loads a legacy ModulePass. Clang 14 otherwise selects the
+     new pass manager by default and silently skips the registered callbacks,
+     leaving the target without AFLGo coverage or distance instrumentation. */
+  cc_params[cc_par_cnt++] = "-flegacy-pass-manager";
+
   /* Detect stray -v calls from ./configure scripts. */
 
   if (argc == 1 && !strcmp(argv[1], "-v")) maybe_linking = 0;

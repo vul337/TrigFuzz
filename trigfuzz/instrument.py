@@ -43,7 +43,8 @@ from .tcu import TCU, tcu_distance_expression
 # v1:  insert distance_instrument() calls.
 # ---------------------------------------------------------------------------
 
-def instrument_v1(tcus: list[TCU], source_root: pathlib.Path) -> None:
+def instrument_v1(tcus: list[TCU], source_root: pathlib.Path,
+                  *, preserve_locations: bool = False) -> None:
     """Modify every file named by a TCU.loc in place.
 
     We operate line-by-line rather than diff-based here because the
@@ -87,11 +88,24 @@ def instrument_v1(tcus: list[TCU], source_root: pathlib.Path) -> None:
                 insert_pos = lineno - 1
                 indent = _indent(target_line)
             stitched = "".join(indent + c + "\n" for c in calls)
+            if preserve_locations:
+                # Restore the original source coordinate after the generated
+                # calls. AFLGo consumes file:line debug locations, so letting
+                # inserted lines shift the remainder of the file would point
+                # its control-flow target at the wrong statement.
+                restore_lineno = lineno
+                if target_line.lstrip().startswith("else"):
+                    restore_lineno += search_offset + 1
+                stitched += f'#line {restore_lineno} "{path.name}"\n'
             lines.insert(insert_pos, stitched)
 
         # Inject the #include once at the top if missing.
         if '#include "distance.h"' not in "".join(lines[:20]):
             lines.insert(0, '#include "distance.h"\n')
+            if preserve_locations:
+                lines.insert(1, f'#line 1 "{path.name}"\n')
+        elif preserve_locations:
+            lines.insert(0, f'#line 1 "{path.name}"\n')
 
         path.write_text("".join(lines))
 

@@ -9,6 +9,12 @@ fi
 BINARIES=$(readlink -e $1)
 TMPDIR=$(readlink -e $2)
 AFLGO="$( cd "$( dirname "${BASH_SOURCE[0]}" )/../" && pwd )"
+OPT_BIN="${OPT:-opt}"
+OPT_ARGS=()
+OPT_MAJOR=$("$OPT_BIN" --version 2>/dev/null | sed -n 's/.*version \([0-9][0-9]*\).*/\1/p' | head -n1)
+if [ -n "$OPT_MAJOR" ] && [ "$OPT_MAJOR" -ge 13 ]; then
+  OPT_ARGS+=("-enable-new-pm=0")
+fi
 fuzzer=""
 if [ $# -eq 3 ]; then
   fuzzer=$(find $BINARIES -maxdepth 1 -name "$3.0.0.*.bc" | rev | cut -d. -f5- | rev)
@@ -63,9 +69,10 @@ if [ $RESUME -le $STEP ]; then
 
       echo "($STEP) Constructing CG for $binary.."
       prefix="$TMPDIR/dot-files/$(basename $binary)"
-      while ! opt -dot-callgraph $binary.0.0.*.bc -callgraph-dot-filename-prefix $prefix >/dev/null 2> $TMPDIR/step${STEP}.log ; do
-        echo -e "\e[93;1m[!]\e[0m Could not generate call graph. Repeating.."
-      done
+      if ! "$OPT_BIN" "${OPT_ARGS[@]}" -dot-callgraph $binary.0.0.*.bc -callgraph-dot-filename-prefix $prefix >/dev/null 2> $TMPDIR/step${STEP}.log; then
+        FAIL=1
+        next_step
+      fi
 
       #Remove repeated lines and rename
       awk '!a[$0]++' $(basename $binary).callgraph.dot > callgraph.$(basename $binary).dot
@@ -80,9 +87,10 @@ if [ $RESUME -le $STEP ]; then
 
     echo "($STEP) Constructing CG for $fuzzer.."
     prefix="$TMPDIR/dot-files/$(basename $fuzzer)"
-    while ! opt -dot-callgraph $fuzzer.0.0.*.bc -callgraph-dot-filename-prefix $prefix >/dev/null 2> $TMPDIR/step${STEP}.log ; do
-      echo -e "\e[93;1m[!]\e[0m Could not generate call graph. Repeating.."
-    done
+    if ! "$OPT_BIN" "${OPT_ARGS[@]}" -dot-callgraph $fuzzer.0.0.*.bc -callgraph-dot-filename-prefix $prefix >/dev/null 2> $TMPDIR/step${STEP}.log; then
+      FAIL=1
+      next_step
+    fi
 
     #Remove repeated lines and rename
     awk '!a[$0]++' $(basename $fuzzer).callgraph.dot > callgraph.dot

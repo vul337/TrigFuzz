@@ -26,11 +26,13 @@
 #include <string>
 #include <sstream>
 #include <list>
+#include <map>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 
 #include "llvm/ADT/Statistic.h"
+#include "llvm/Config/llvm-config.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
@@ -66,7 +68,7 @@ cl::opt<std::string> TargetsFile(
 
 cl::opt<std::string> OutDirectory(
     "outdir",
-    cl::desc("Output directory where Ftargets.txt, Fnames.txt, and BBnames.txt are generated."),
+    cl::desc("Output directory where AFLGo target and name metadata is generated."),
     cl::value_desc("outdir"));
 
 namespace llvm {
@@ -278,6 +280,7 @@ bool AFLCoverage::runOnModule(Module &M) {
 
     std::ofstream bbnames(OutDirectory + "/BBnames.txt", std::ofstream::out | std::ofstream::app);
     std::ofstream bbcalls(OutDirectory + "/BBcalls.txt", std::ofstream::out | std::ofstream::app);
+    std::ofstream bbtargets(OutDirectory + "/BBtargets.resolved.txt", std::ofstream::out | std::ofstream::app);
     std::ofstream fnames(OutDirectory + "/Fnames.txt", std::ofstream::out | std::ofstream::app);
     std::ofstream ftargets(OutDirectory + "/Ftargets.txt", std::ofstream::out | std::ofstream::app);
 
@@ -300,6 +303,7 @@ bool AFLCoverage::runOnModule(Module &M) {
       bool is_target = false;
       for (auto &BB : F) {
 
+        bool is_target_bb = false;
         std::string bb_name("");
         std::string filename;
         unsigned line;
@@ -319,19 +323,19 @@ bool AFLCoverage::runOnModule(Module &M) {
           if (bb_name.empty()) 
             bb_name = filename + ":" + std::to_string(line);
           
-          if (!is_target) {
-            for (auto &target : targets) {
-              std::size_t found = target.find_last_of("/\\");
-              if (found != std::string::npos)
-                target = target.substr(found + 1);
+          for (const auto &target : targets) {
+            std::string normalized_target = target;
+            std::size_t found = normalized_target.find_last_of("/\\");
+            if (found != std::string::npos)
+              normalized_target = normalized_target.substr(found + 1);
 
-              std::size_t pos = target.find_last_of(":");
-              std::string target_file = target.substr(0, pos);
-              unsigned int target_line = atoi(target.substr(pos + 1).c_str());
+            std::size_t pos = normalized_target.find_last_of(":");
+            std::string target_file = normalized_target.substr(0, pos);
+            unsigned int target_line = atoi(normalized_target.substr(pos + 1).c_str());
 
-              if (!target_file.compare(filename) && target_line == line)
-                is_target = true;
-
+            if (!target_file.compare(filename) && target_line == line) {
+              is_target = true;
+              is_target_bb = true;
             }
           }
 
@@ -360,7 +364,11 @@ bool AFLCoverage::runOnModule(Module &M) {
             BB.setValueName(ValueName::Create(NameRef, Allocator));
           }
 
-          bbnames << BB.getName().str() << "\n";
+          // distance.py consumes the source coordinate, while the trailing
+          // colon is only an LLVM basic-block-name convention used in DOT.
+          bbnames << bb_name << "\n";
+          if (is_target_bb)
+            bbtargets << bb_name << "\n";
           has_BBs = true;
 
 #ifdef AFLGO_TRACING
@@ -383,7 +391,11 @@ bool AFLCoverage::runOnModule(Module &M) {
         /* Print CFG */
         std::string cfgFileName = dotfiles + "/cfg." + funcName + ".dot";
         std::error_code EC;
+#if LLVM_VERSION_MAJOR >= 7
+        raw_fd_ostream cfgFile(cfgFileName, EC, sys::fs::OF_None);
+#else
         raw_fd_ostream cfgFile(cfgFileName, EC, sys::fs::F_None);
+#endif
         if (!EC) {
           WriteGraph(cfgFile, &F, true);
         }
@@ -484,20 +496,37 @@ bool AFLCoverage::runOnModule(Module &M) {
 
         /* Load prev_loc */
 
+#if LLVM_VERSION_MAJOR >= 9
+        LoadInst *PrevLoc = IRB.CreateLoad(Int32Ty, AFLPrevLoc);
+#else
         LoadInst *PrevLoc = IRB.CreateLoad(AFLPrevLoc);
+#endif
         PrevLoc->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
         Value *PrevLocCasted = IRB.CreateZExt(PrevLoc, IRB.getInt32Ty());
 
         /* Load SHM pointer */
 
+#if LLVM_VERSION_MAJOR >= 9
+        LoadInst *MapPtr = IRB.CreateLoad(Int8Ty->getPointerTo(), AFLMapPtr);
+#else
         LoadInst *MapPtr = IRB.CreateLoad(AFLMapPtr);
+#endif
         MapPtr->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
+#if LLVM_VERSION_MAJOR >= 9
+        Value *MapPtrIdx =
+            IRB.CreateGEP(Int8Ty, MapPtr, IRB.CreateXor(PrevLocCasted, CurLoc));
+#else
         Value *MapPtrIdx =
             IRB.CreateGEP(MapPtr, IRB.CreateXor(PrevLocCasted, CurLoc));
+#endif
 
         /* Update bitmap */
 
+#if LLVM_VERSION_MAJOR >= 9
+        LoadInst *Counter = IRB.CreateLoad(Int8Ty, MapPtrIdx);
+#else
         LoadInst *Counter = IRB.CreateLoad(MapPtrIdx);
+#endif
         Counter->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
         Value *Incr = IRB.CreateAdd(Counter, ConstantInt::get(Int8Ty, 1));
         IRB.CreateStore(Incr, MapPtrIdx)
@@ -516,9 +545,16 @@ bool AFLCoverage::runOnModule(Module &M) {
 
           /* Add distance to shm[MAPSIZE] */
 
+#if LLVM_VERSION_MAJOR >= 9
+          Value *MapDistPtr = IRB.CreateBitCast(
+              IRB.CreateGEP(Int8Ty, MapPtr, MapDistLoc),
+              LargestType->getPointerTo());
+          LoadInst *MapDist = IRB.CreateLoad(LargestType, MapDistPtr);
+#else
           Value *MapDistPtr = IRB.CreateBitCast(
               IRB.CreateGEP(MapPtr, MapDistLoc), LargestType->getPointerTo());
           LoadInst *MapDist = IRB.CreateLoad(MapDistPtr);
+#endif
           MapDist->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
 
           Value *IncrDist = IRB.CreateAdd(MapDist, Distance);
@@ -527,9 +563,16 @@ bool AFLCoverage::runOnModule(Module &M) {
 
           /* Increase count at shm[MAPSIZE + (4 or 8)] */
 
+#if LLVM_VERSION_MAJOR >= 9
+          Value *MapCntPtr = IRB.CreateBitCast(
+              IRB.CreateGEP(Int8Ty, MapPtr, MapCntLoc),
+              LargestType->getPointerTo());
+          LoadInst *MapCnt = IRB.CreateLoad(LargestType, MapCntPtr);
+#else
           Value *MapCntPtr = IRB.CreateBitCast(
               IRB.CreateGEP(MapPtr, MapCntLoc), LargestType->getPointerTo());
           LoadInst *MapCnt = IRB.CreateLoad(MapCntPtr);
+#endif
           MapCnt->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
 
           Value *IncrCnt = IRB.CreateAdd(MapCnt, One);

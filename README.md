@@ -51,6 +51,9 @@ python3 -m pip install openai pytest
 Build dependencies vary by engine:
 
 - AFLGo based TrigFuzz uses the bundled AFLGo/AFL source tree and builds with `make clean all`.
+- AFLGo control-flow distance mode additionally needs the bundled LLVM pass,
+  LLVM/Clang development tools, Graphviz, and the Python `networkx`/`pydot`
+  packages used by AFLGo's distance generator.
 - Selective AFL++ based TrigFuzz uses the bundled AFL++ source tree and builds with `make source-only`.
 - AFL++ gcc-plugin mode needs GCC plugin development headers.
 - AFL++ Nyx mode is optional and requires Rust; the normal source-instrumentation build does not require Nyx.
@@ -64,6 +67,12 @@ Runtime environment variables used by the workflow:
 | `OPENAI_API_BASE_URL` / `OPENAI_BASE_URL` | Optional OpenAI-compatible API base URL. |
 | `TRIGFUZZ_AFL` | Optional override for the AFLGo based `afl-fuzz` binary. |
 | `TRIGFUZZ_AFL_GCC` | Optional override for the AFLGo based `afl-gcc` compiler wrapper. |
+| `TRIGFUZZ_AFL_GXX` | Optional override for the AFLGo based `afl-g++` compiler wrapper. |
+| `TRIGFUZZ_AFLGO_ROOT` | Optional override for `engines/aflgo-trigfuzz`. |
+| `TRIGFUZZ_AFLGO_CLANG` / `TRIGFUZZ_AFLGO_CLANGXX` | Optional overrides for the LLVM AFLGo compiler wrappers. |
+| `TRIGFUZZ_AFLGO_CC` / `TRIGFUZZ_AFLGO_CXX` | Underlying Clang compilers used by the AFLGo wrappers; prefer the toolchain used to build the pass. |
+| `TRIGFUZZ_AFLGO_OPT` | Matching LLVM `opt` binary used for call-graph generation. |
+| `TRIGFUZZ_AFLGO_DISTANCE_SCRIPT` | Optional override for AFLGo's distance-generation script. |
 | `AFL_TRIG_ENABLE_BYTE_AWARE_MUTATION` | Opt-in switch for the triggering byte-aware mutation stage. |
 | `AFL_TRIG_MUTATION_MODE` | Optional byte-aware mutation strategy: `diff`, `scan`, or `hybrid`. |
 | `AFL_TRIGFUZZ_ENABLE` | Enables TrigFuzz feedback in the AFL++ based engine. |
@@ -93,9 +102,13 @@ my-target/
 {
   "type": "heap-buffer-overflow",
   "crash_points": ["line 5973 in tif_dirread.c"],
+  "aflgo_targets": ["tif_dirread.c:5973"],
   "summary": "Short bug description and relevant constraints"
 }
 ```
+
+`aflgo_targets` is optional. With `--aflgo-distance`, the driver first uses
+that list and otherwise derives `file:line` targets from `crash_points`.
 
 For small targets, putting the relevant C/C++ files under `source/` is enough. For larger targets, `funcs.json` lets the progressive TC generation agent fetch extra function bodies when the model asks for them.
 
@@ -145,7 +158,13 @@ See [docs/TCU_FORMAT.md](docs/TCU_FORMAT.md).
 ```sh
 cd /root/TrigFuzz/engines/aflgo-trigfuzz/afl-2.57b
 make clean all
+cd /root/TrigFuzz/engines/aflgo-trigfuzz/instrument
+make clean all LLVM_CONFIG=llvm-config-14 CC=clang-14 CXX=clang++-14
 ```
+
+The second build is required only when using AFLGo control-flow distance. The
+compiler pass must be built with a compatible LLVM version (LLVM 14 in the
+tested release environment).
 
 ### 5. Fuzz with generated TCUs
 
@@ -153,17 +172,29 @@ make clean all
 cd /root/TrigFuzz
 python3 -B -m trigfuzz.driver my-target \
   --skip-llm \
+  --aflgo-distance \
   --quick-dirty \
   --budget 3600
 ```
 
 `--skip-llm` means the driver uses the reviewed `my-target/tcus.json`. The driver instruments `source/`, builds a target binary, and runs the patched AFLGo fuzzer with `-z exp -c 10m`; `--quick-dirty` passes `-d`.
 
+`--aflgo-distance` performs AFLGo's two-pass build: it collects control-flow
+metadata, generates `work/aflgo-distance/temp/distance.cfg.txt`, and rebuilds
+the v1 target with both AFLGo control-flow distance and TCU triggering
+distance. Omit this option for the lighter TCU-only build.
+
 For non-single-file targets, provide `my-target/build.sh` and pass `--use-script`. The script receives:
 
 ```text
 build.sh <instrumented-source-dir> <output-binary>
 ```
+
+The script must honor `CC`, `CXX`, `CFLAGS`, and `CXXFLAGS`. During an AFLGo
+two-pass build, `TRIGFUZZ_BUILD_PHASE` is set to `aflgo-preprocess` and then
+`aflgo-final`; it is `final` for the normal build. For unusual build systems,
+these phase values can be used to select separate build directories or clean
+between passes.
 
 ### 6. AFL++ selective path
 
@@ -189,6 +220,10 @@ python3 -B -m trigfuzz.driver examples/motivating \
 ```
 
 The driver uses `-z exp -c 10m` by default and passes `-d` when `--quick-dirty` is set.
+
+This compact command uses TCU triggering distance only. Add
+`--aflgo-distance` (after building `engines/aflgo-trigfuzz/instrument`) to
+combine it with AFLGo control-flow distance.
 
 Triggering-distance scheduling is the default. To additionally enable the byte-aware mutation stage:
 
