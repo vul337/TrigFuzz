@@ -9,6 +9,18 @@ The TC generation agent only needs one interface:
 chat-completions endpoints are also supported by setting
 `OPENAI_API_BASE_URL` or `OPENAI_BASE_URL` to a chat-completions style
 endpoint.
+
+Thinking/reasoning control
+--------------------------
+Set ``OPENAI_DISABLE_THINKING=1`` to suppress the model's internal
+chain-of-thought before it emits the final answer.
+
+* Responses API path  – passes ``reasoning={"effort": "none"}`` per
+  https://api-docs.deepseek.com/zh-cn/api/create-response
+* Chat completions path – passes ``extra_body={"enable_thinking": False}``
+  (DeepSeek chat extension).
+
+Without this flag both paths use the model's default thinking behaviour.
 """
 
 from __future__ import annotations
@@ -21,6 +33,7 @@ from .prompts import SYSTEM_PROMPT
 _DEFAULT_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5.5")
 _DEFAULT_MAX_OUTPUT_TOKENS = int(os.environ.get("OPENAI_MAX_OUTPUT_TOKENS", "4096"))
 _CHAT_ENDPOINT_TAIL = ("chat", "completions")
+_DISABLE_THINKING = os.environ.get("OPENAI_DISABLE_THINKING", "").strip() in ("1", "true", "yes")
 
 
 class LLMClient:
@@ -69,22 +82,35 @@ class LLMClient:
         if self._use_chat_completions:
             return self._query_chat_completions(messages)
 
-        resp = self._client.responses.create(
+        kwargs: dict[str, Any] = dict(
             model=self._model,
             instructions=SYSTEM_PROMPT,
             input=self._to_response_input(messages),
             max_output_tokens=_DEFAULT_MAX_OUTPUT_TOKENS,
         )
+        if _DISABLE_THINKING:
+            # Responses API: effort="none" disables the reasoning chain.
+            # ref: https://api-docs.deepseek.com/zh-cn/api/create-response
+            kwargs["reasoning"] = {"effort": "none"}
+        resp = self._client.responses.create(**kwargs)
         return self._extract_text(resp)
 
     def _query_chat_completions(self, messages: list[dict[str, Any]]) -> str:
         chat_messages = [{"role": "system", "content": SYSTEM_PROMPT}]
         chat_messages.extend(self._to_chat_messages(messages))
-        resp = self._client.chat.completions.create(
+        kwargs: dict[str, Any] = dict(
             model=self._model,
             messages=chat_messages,
             max_tokens=_DEFAULT_MAX_OUTPUT_TOKENS,
         )
+        if _DISABLE_THINKING:
+            # DeepSeek chat-completions extension for disabling thinking.
+            # Newer models (e.g. deepseek-v4-flash) require the nested
+            # {"thinking": {"type": "disabled"}} format; the older
+            # {"enable_thinking": False} form is ignored and causes all
+            # completion tokens to be consumed by the reasoning chain.
+            kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
+        resp = self._client.chat.completions.create(**kwargs)
         return self._extract_chat_text(resp)
 
     @staticmethod
